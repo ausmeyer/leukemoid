@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Myeloid Malignancy Predictor</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Link to CSS file -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Link to Plotly.js library -->
+    <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+    <!-- Link to ONNX Runtime Web library -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.min.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <h1>Myeloid Malignancy Predictor</h1>
+            <div class="subtitle">Advanced LightGBM-based diagnostic tool</div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Instructional text panel -->
+        <div class="instruction-panel">
+            <p class="instruction-text">Fill in the patient data and click Compute. Find prediction below.</p>
+            <p class="model-info">Model info: Based on 13 variables. Sensitivity: 100.0%, Specificity: 96.3% (validation set).</p>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Patient Data</div>
+            <div class="card-body">
+                <!-- Two-column layout for Demographics and Biochemistry -->
+                <div class="two-column-grid">
+                    <!-- Patient Demographics -->
+                    <div class="input-group">
+                        <h3 class="group-title">Demographics</h3>
+                        <div class="input-subgrid">
+                            <div class="input-item">
+                                <label for="age">Age</label>
+                                <input type="number" id="age" name="age" value="67" min="0" step="1">
+                                <span class="help-text">Years</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Biochemistry -->
+                    <div class="input-group">
+                        <h3 class="group-title">Biochemistry</h3>
+                        <div class="input-subgrid">
+                            <div class="input-item">
+                                <label for="ldh">LDH</label>
+                                <input type="number" id="ldh" name="ldh" value="406" min="0" step="1">
+                                <span class="help-text">IU/L (N:94-250)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Complete Blood Count - Full width -->
+                <div class="input-group">
+                    <h3 class="group-title">Complete Blood Count</h3>
+                    <div class="input-subgrid">
+                        <div class="input-item">
+                            <label for="initial_wbc_50">WBC (>50 k/μL)</label>
+                            <input type="number" id="initial_wbc_50" name="initial_wbc_50" value="85" min="50" step="0.1">
+                            <span class="help-text">k/μL (>50)</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="initial_wbc_hosp">WBC Initial</label>
+                            <input type="number" id="initial_wbc_hosp" name="initial_wbc_hosp" value="85" min="0" step="0.1">
+                            <span class="help-text">k/μL</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="hgb">Hemoglobin (Hgb)</label>
+                            <input type="number" id="hgb" name="hgb" value="10" min="0" step="0.1">
+                            <span class="help-text">g/dL (N:11-16)</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="mcv">MCV</label>
+                            <input type="number" id="mcv" name="mcv" value="96" min="0" step="0.1">
+                            <span class="help-text">fL (N:82-98)</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="platelets">Platelets</label>
+                            <input type="number" id="platelets" name="platelets" value="189" min="0" step="1">
+                            <span class="help-text">k/μL (N:150-400)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Differential Count - Full width -->
+                <div class="input-group">
+                    <h3 class="group-title">Differential Count</h3>
+                    <div class="input-subgrid">
+                        <div class="input-item">
+                            <label for="neuts">Neutrophils</label>
+                            <input type="number" id="neuts" name="neuts" value="67" min="0" max="100" step="0.1">
+                            <span class="help-text">% (N:34-71)</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="bands">Bands</label>
+                            <input type="number" id="bands" name="bands" value="6" min="0" max="100" step="0.1">
+                            <span class="help-text">% (N:0-5)</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="lymphs">Lymphocytes</label>
+                            <input type="number" id="lymphs" name="lymphs" value="12" min="0" max="100" step="0.1">
+                            <span class="help-text">% (N:19-53)</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="monos">Monocytes</label>
+                            <input type="number" id="monos" name="monos" value="7" min="0" max="100" step="0.1">
+                            <span class="help-text">% (N:5-13)</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="eos">Eosinophils</label>
+                            <input type="number" id="eos" name="eos" value="1" min="0" max="100" step="0.1">
+                            <span class="help-text">% (N:1-7)</span>
+                        </div>
+
+                        <div class="input-item">
+                            <label for="baso">Basophils</label>
+                            <input type="number" id="baso" name="baso" value="0" min="0" max="100" step="0.1">
+                            <span class="help-text">% (N:0-1)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-container">
+            <button id="computeButton" class="btn btn-primary btn-lg">Compute Prediction</button>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Results</div>
+            <div class="card-body">
+                <div id="predictionScore">Prediction Score: -</div>
+                <div id="diagnosisResult" class="diagnosis-output">Diagnosis: -</div>
+                <div id="predictionPlot">
+                    <!-- Plot will be rendered here by Plotly.js -->
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>© 2024 Myeloid Malignancy Predictor | LightGBM Model</p>
+        </footer>
+    </div>
+
+    <!-- Link to JavaScript file -->
+    <script src="script.js"></script>
+</body>
+</html>

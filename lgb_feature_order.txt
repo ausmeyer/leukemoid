@@ -1,0 +1,13 @@
+initial_wbc_50
+initial_wbc_hosp
+hgb
+mcv
+platelets
+neuts
+bands
+lymphs
+monos
+eos
+baso
+ldh
+age
