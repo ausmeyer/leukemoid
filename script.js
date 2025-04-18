@@ -33,6 +33,122 @@ const referenceRanges = {
     baso: { min: 0, max: 5, normal_min: 0, normal_max: 1, unit: "%" }
 };
 
+// Function to validate the WBC >50k field
+function validateWbc50Field() {
+    const wbc50Input = document.getElementById('initial_wbc_50');
+    if (!wbc50Input) return true; // Field doesn't exist, no validation needed
+    
+    const value = parseFloat(wbc50Input.value);
+    if (isNaN(value)) return false; // Not a number
+    
+    if (value < 50) {
+        // Value is less than 50, show error
+        wbc50Input.style.border = '2px solid var(--danger-color)';
+        
+        // Create or update error message
+        let errorMsg = wbc50Input.parentNode.querySelector('.error-message');
+        if (!errorMsg) {
+            errorMsg = document.createElement('div');
+            errorMsg.className = 'error-message';
+            
+            // Find the unit element to position the error message after it
+            const unitElement = wbc50Input.parentNode.querySelector('.unit');
+            if (unitElement) {
+                unitElement.parentNode.insertBefore(errorMsg, unitElement.nextSibling);
+            } else {
+                wbc50Input.parentNode.appendChild(errorMsg);
+            }
+        }
+        
+        errorMsg.textContent = 'WBC count must be ≥ 50k for accurate results';
+        errorMsg.style.color = 'var(--danger-color)';
+        errorMsg.style.fontSize = '0.8rem';
+        errorMsg.style.marginLeft = '15px'; // Add more space from the units
+        errorMsg.style.display = 'inline-block'; // Make it inline-block
+        errorMsg.style.verticalAlign = 'middle'; // Align vertically in the middle
+        errorMsg.style.position = 'relative';
+        errorMsg.style.top = '-1px'; // Fine-tune vertical alignment
+        
+        return false;
+    } else {
+        // Value is valid, clear any error
+        wbc50Input.style.border = '';
+        
+        // Remove error message if it exists
+        const errorMsg = wbc50Input.parentNode.querySelector('.error-message');
+        if (errorMsg) {
+            errorMsg.remove();
+        }
+        
+        return true;
+    }
+}
+
+// Function to set up WBC >50k field validation
+function setupWbc50Validation() {
+    const wbc50Input = document.getElementById('initial_wbc_50');
+    if (!wbc50Input) return;
+    
+    // Remove any existing listeners to prevent duplicates
+    const newInput = wbc50Input.cloneNode(true);
+    wbc50Input.parentNode.replaceChild(newInput, wbc50Input);
+    
+    // Add the event listeners to the new element
+    newInput.addEventListener('input', validateWbc50Field);
+    newInput.addEventListener('change', validateWbc50Field);
+    
+    // Initial validation
+    validateWbc50Field();
+}
+
+// Function to remove range slider from initial_wbc_hosp if it exists
+function removeWbcRangeSlider() {
+    const wbcInputGroup = document.getElementById('initial_wbc_hosp').closest('.input-group');
+    if (wbcInputGroup) {
+        const rangeSlider = wbcInputGroup.querySelector('.range-slider-container');
+        if (rangeSlider) {
+            rangeSlider.remove();
+        }
+    }
+}
+
+// Add CSS for error messages
+function addErrorMessageStyles() {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+        .error-message {
+            color: var(--danger-color);
+            font-size: 0.8rem;
+            margin-left: 15px;
+            display: inline-block;
+            vertical-align: middle;
+            animation: fadeIn 0.3s;
+            line-height: 1.2;
+            position: relative;
+            top: -1px; /* Fine-tune vertical alignment */
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .input-field {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .unit {
+            padding-left: 8px;
+            color: var(--dark-gray);
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+    `;
+    document.head.appendChild(styleElement);
+}
+
 // Function to adjust the results layout
 function adjustResultsLayout() {
     // Get the results summary container
@@ -149,8 +265,8 @@ async function initializeApp() {
 
 // Function to add range sliders to CBC and LDH fields
 function addRangeSlidersToFields() {
-    // Fields that need range sliders
-    const cbcLdhFields = ['ldh', 'initial_wbc_hosp', 'hgb', 'mcv', 'platelets'];
+    // Fields that need range sliders - removed initial_wbc_hosp
+    const cbcLdhFields = ['ldh', 'hgb', 'mcv', 'platelets'];
     
     cbcLdhFields.forEach(field => {
         const inputGroup = document.getElementById(field).closest('.input-group');
@@ -218,6 +334,12 @@ async function handleCompute() {
         console.error("App not initialized.");
         diagnosisResultDiv.textContent = "Error: Application not initialized.";
         diagnosisResultDiv.className = 'prediction-score score-high';
+        return;
+    }
+    
+    // Validate WBC >50k field before proceeding
+    if (!validateWbc50Field()) {
+        alert("Error: WBC count must be greater than or equal to 50k for accurate results.");
         return;
     }
 
@@ -603,10 +725,10 @@ function showTab(tabId) {
 
 // --- Update range markers ---
 function updateRangeMarkers() {
-    // Update all parameters with range markers
+    // Update all parameters with range markers - removed initial_wbc_hosp
     const parameters = [
         'neuts', 'bands', 'lymphs', 'monos', 'eos', 'baso',
-        'ldh', 'initial_wbc_hosp', 'hgb', 'mcv', 'platelets'
+        'ldh', 'hgb', 'mcv', 'platelets'
     ];
     
     parameters.forEach(param => {
@@ -655,10 +777,10 @@ function checkAbnormalValues() {
 
 // Add this function to ensure all event listeners are properly set up
 function setupInputListeners() {
-    // Add input event listeners to all parameters with range markers
+    // Add input event listeners to all parameters with range markers - removed initial_wbc_hosp
     const parameters = [
         'neuts', 'bands', 'lymphs', 'monos', 'eos', 'baso',
-        'ldh', 'initial_wbc_hosp', 'hgb', 'mcv', 'platelets'
+        'ldh', 'hgb', 'mcv', 'platelets'
     ];
     
     parameters.forEach(param => {
@@ -681,6 +803,21 @@ function setupInputListeners() {
             });
         }
     });
+    
+    // Still need to add event listener for initial_wbc_hosp for abnormal value highlighting
+    const wbcInput = document.getElementById('initial_wbc_hosp');
+    if (wbcInput) {
+        const newWbcInput = wbcInput.cloneNode(true);
+        wbcInput.parentNode.replaceChild(newWbcInput, wbcInput);
+        
+        newWbcInput.addEventListener('input', function() {
+            checkAbnormalValues();
+        });
+        
+        newWbcInput.addEventListener('change', function() {
+            checkAbnormalValues();
+        });
+    }
 }
 
 // Debounce function for resize
@@ -717,14 +854,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up input listeners properly
     setupInputListeners();
     
+    // Set up WBC >50k validation
+    setupWbc50Validation();
+    
     // Initialize range markers
     updateRangeMarkers();
+    
+    // Remove WBC range slider if it exists
+    removeWbcRangeSlider();
     
     // Adjust the results layout
     adjustResultsLayout();
     
     // Add additional styles for result items
     addResultItemStyles();
+    
+    // Add error message styles
+    addErrorMessageStyles();
     
     // Start app initialization
     initializeApp();
