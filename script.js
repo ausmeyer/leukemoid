@@ -1,7 +1,3 @@
-// Myeloid Malignancy Predictor - script.js
-// VERSION FOR ONNX MODEL CONVERTED WITH zipmap=False (e.g., lightgbm_model_nozipmap.onnx)
-// Includes Horizontal Top Legend and Plot Resizing
-
 // --- Global Variables ---
 let ortSession = null; // To hold the ONNX Runtime session
 let plotData = null; // To hold data from lgbm_plot_data.json
@@ -11,14 +7,97 @@ let featureOrder = null; // To hold the exact order of features from lgb_feature
 const computeButton = document.getElementById('computeButton');
 const predictionScoreDiv = document.getElementById('predictionScore');
 const diagnosisResultDiv = document.getElementById('diagnosisResult');
-const predictionPlotDiv = document.getElementById('predictionPlot'); // For plotting
-const inputSection = document.querySelector('.card'); // Updated selector
+const predictionPlotDiv = document.getElementById('predictionPlot');
+const keyFindingsDiv = document.getElementById('keyFindings');
+
+// List of all input fields
+const inputFields = [
+    'age', 'ldh', 'initial_wbc_50', 'initial_wbc_hosp', 'hgb', 'mcv', 'platelets',
+    'neuts', 'bands', 'lymphs', 'monos', 'eos', 'baso'
+];
+
+// Reference ranges for parameters
+const referenceRanges = {
+    age: { min: 0, max: 120, normal_min: 0, normal_max: 120, unit: "years" },
+    ldh: { min: 0, max: 1000, normal_min: 94, normal_max: 250, unit: "IU/L" },
+    initial_wbc_50: { min: 50, max: 200, normal_min: 4, normal_max: 10, unit: "k/μL" },
+    initial_wbc_hosp: { min: 0, max: 200, normal_min: 4, normal_max: 10, unit: "k/μL" },
+    hgb: { min: 0, max: 20, normal_min: 11, normal_max: 16, unit: "g/dL" },
+    mcv: { min: 60, max: 120, normal_min: 82, normal_max: 98, unit: "fL" },
+    platelets: { min: 0, max: 1000, normal_min: 150, normal_max: 400, unit: "k/μL" },
+    neuts: { min: 0, max: 100, normal_min: 34, normal_max: 71, unit: "%" },
+    bands: { min: 0, max: 30, normal_min: 0, normal_max: 5, unit: "%" },
+    lymphs: { min: 0, max: 100, normal_min: 19, normal_max: 53, unit: "%" },
+    monos: { min: 0, max: 30, normal_min: 5, normal_max: 13, unit: "%" },
+    eos: { min: 0, max: 20, normal_min: 1, normal_max: 7, unit: "%" },
+    baso: { min: 0, max: 5, normal_min: 0, normal_max: 1, unit: "%" }
+};
+
+// Function to adjust the results layout
+function adjustResultsLayout() {
+    // Get the results summary container
+    const resultSummary = document.querySelector('.result-summary');
+    if (!resultSummary) return;
+    
+    // Remove the model confidence div if it exists
+    const confidenceItem = document.getElementById('modelConfidence');
+    if (confidenceItem) {
+        const confidenceContainer = confidenceItem.closest('.result-item');
+        if (confidenceContainer) {
+            confidenceContainer.remove();
+        }
+    }
+    
+    // Adjust the layout of the remaining items to be side by side
+    resultSummary.style.display = 'flex';
+    resultSummary.style.flexDirection = 'row';
+    resultSummary.style.justifyContent = 'space-between';
+    resultSummary.style.alignItems = 'flex-start';
+    resultSummary.style.gap = '40px'; // Add some space between columns
+    
+    // Make each item take up equal width
+    const remainingItems = resultSummary.querySelectorAll('.result-item');
+    remainingItems.forEach(item => {
+        item.style.flex = '1 0 calc(50% - 20px)'; // Equal width with gap consideration
+        item.style.maxWidth = 'calc(50% - 20px)';
+        item.style.margin = '0'; // Reset any existing margins
+    });
+}
+
+// Additional CSS adjustments for result items
+function addResultItemStyles() {
+    // Add a style element to the head
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+        .result-summary {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 40px;
+            margin-bottom: 30px;
+        }
+        
+        .result-item {
+            flex: 1 0 calc(50% - 20px);
+            max-width: calc(50% - 20px);
+            margin: 0;
+            text-align: center;
+        }
+        
+        .result-item-title {
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+        
+        .result-item-value {
+            font-size: 1.4rem;
+        }
+    `;
+    document.head.appendChild(styleElement);
+}
 
 // --- Initialization ---
-// Disable button until resources are loaded
-computeButton.disabled = true;
-computeButton.textContent = 'Loading Model...';
-
 async function initializeApp() {
     console.log("Initializing application...");
     try {
@@ -31,10 +110,7 @@ async function initializeApp() {
         const featureText = await featureResponse.text();
         featureOrder = featureText.split('\n').map(f => f.trim()).filter(f => f.length > 0);
         console.log(`Feature order loaded (${featureOrder.length} features):`, featureOrder);
-        if (featureOrder.length !== 13) {
-            console.warn("Warning: Expected 13 features, but found", featureOrder.length);
-        }
-
+        
         // 2. Fetch the plot data and cutoff
         console.log("Fetching plot data...");
         const plotDataResponse = await fetch('lgbm_plot_data.json');
@@ -59,14 +135,79 @@ async function initializeApp() {
         computeButton.textContent = 'Compute Prediction';
         console.log("Initialization complete. Ready for prediction.");
 
+        // 5. Add range sliders to CBC and LDH fields
+        addRangeSlidersToFields();
+
     } catch (error) {
         console.error("Initialization failed:", error);
         diagnosisResultDiv.textContent = `Initialization Error: ${error.message}. Please check file paths (using nozipmap model?) and network connection.`;
-        diagnosisResultDiv.className = 'diagnosis-output';
-        diagnosisResultDiv.style.backgroundColor = 'red';
+        diagnosisResultDiv.className = 'prediction-score score-high';
         computeButton.textContent = 'Initialization Failed';
         computeButton.disabled = true;
     }
+}
+
+// Function to add range sliders to CBC and LDH fields
+function addRangeSlidersToFields() {
+    // Fields that need range sliders
+    const cbcLdhFields = ['ldh', 'initial_wbc_hosp', 'hgb', 'mcv', 'platelets'];
+    
+    cbcLdhFields.forEach(field => {
+        const inputGroup = document.getElementById(field).closest('.input-group');
+        if (!inputGroup) return;
+        
+        // Create range slider container
+        const rangeSliderContainer = document.createElement('div');
+        rangeSliderContainer.className = 'range-slider-container';
+        
+        // Create min value span
+        const rangeMin = document.createElement('span');
+        rangeMin.className = 'range-min';
+        rangeMin.textContent = referenceRanges[field].min;
+        
+        // Create slider div
+        const rangeSlider = document.createElement('div');
+        rangeSlider.className = 'range-slider';
+        
+        // Create normal range indicator
+        const rangeNormal = document.createElement('div');
+        rangeNormal.className = 'range-normal';
+        
+        // Calculate normal range position as percentage
+        const totalRange = referenceRanges[field].max - referenceRanges[field].min;
+        const normalMinPercent = ((referenceRanges[field].normal_min - referenceRanges[field].min) / totalRange) * 100;
+        const normalMaxPercent = ((referenceRanges[field].normal_max - referenceRanges[field].min) / totalRange) * 100;
+        
+        rangeNormal.style.left = `${normalMinPercent}%`;
+        rangeNormal.style.right = `${100 - normalMaxPercent}%`;
+        
+        // Create marker
+        const rangeMarker = document.createElement('div');
+        rangeMarker.className = `range-marker ${field}-marker`;
+        
+        // Calculate initial marker position
+        const inputValue = parseFloat(document.getElementById(field).value);
+        if (!isNaN(inputValue)) {
+            const percentPosition = ((inputValue - referenceRanges[field].min) / totalRange) * 100;
+            rangeMarker.style.left = `${percentPosition}%`;
+        }
+        
+        // Create max value span
+        const rangeMax = document.createElement('span');
+        rangeMax.className = 'range-max';
+        rangeMax.textContent = referenceRanges[field].max;
+        
+        // Assemble the components
+        rangeSlider.appendChild(rangeNormal);
+        rangeSlider.appendChild(rangeMarker);
+        
+        rangeSliderContainer.appendChild(rangeMin);
+        rangeSliderContainer.appendChild(rangeSlider);
+        rangeSliderContainer.appendChild(rangeMax);
+        
+        // Add to DOM
+        inputGroup.appendChild(rangeSliderContainer);
+    });
 }
 
 // --- Prediction Handling (Expecting Simplified Tensor Output) ---
@@ -76,44 +217,44 @@ async function handleCompute() {
     if (!ortSession || !plotData || !featureOrder) {
         console.error("App not initialized.");
         diagnosisResultDiv.textContent = "Error: Application not initialized.";
-        diagnosisResultDiv.className = 'diagnosis-output';
-        diagnosisResultDiv.style.backgroundColor = 'red';
+        diagnosisResultDiv.className = 'prediction-score score-high';
         return;
     }
 
     computeButton.disabled = true;
     computeButton.textContent = 'Computing...';
-    predictionScoreDiv.textContent = 'Prediction Score: -';
-    diagnosisResultDiv.textContent = 'Diagnosis: -';
-    diagnosisResultDiv.className = 'diagnosis-output';
-    diagnosisResultDiv.style.backgroundColor = '#6c757d';
+    predictionScoreDiv.textContent = '-';
+    diagnosisResultDiv.textContent = '-';
 
     // Clear previous plot
     try {
-        Plotly.purge(predictionPlotDiv); // Clear plotly plot if exists
-    } catch (e) { console.warn("Plotly purge failed (maybe no plot yet):", e)}
-    predictionPlotDiv.innerHTML = ''; // Clear any other content
-
+        Plotly.purge(predictionPlotDiv);
+    } catch (e) { 
+        console.warn("Plotly purge failed (maybe no plot yet):", e);
+    }
+    predictionPlotDiv.innerHTML = '';
 
     try {
         // 1. Get input values
         const inputValues = [];
         let invalidInput = false;
+        
         for (const featureName of featureOrder) {
             const inputElement = document.getElementById(featureName);
             if (!inputElement) throw new Error(`Input element missing: ${featureName}`);
+            
             const value = parseFloat(inputElement.value);
             if (isNaN(value)) {
                 console.error(`Invalid input for ${featureName}: '${inputElement.value}'`);
-                inputElement.style.border = '2px solid var(--danger-color)'; 
+                inputElement.style.border = '2px solid var(--danger-color)';
                 invalidInput = true;
             } else {
-                inputElement.style.border = ''; 
+                inputElement.style.border = '';
                 inputValues.push(value);
             }
         }
+        
         if (invalidInput) throw new Error("Invalid input detected.");
-        if (inputValues.length !== featureOrder.length) throw new Error("Input count mismatch.");
         console.log("Input values collected:", inputValues);
 
         // 2. Prepare the ONNX tensor
@@ -158,46 +299,83 @@ async function handleCompute() {
         if (isNaN(prediction)) {
             throw new Error("Prediction score extraction resulted in NaN.");
         }
-        predictionScoreDiv.textContent = `Prediction Score: ${prediction.toFixed(4)}`;
-
+        predictionScoreDiv.textContent = prediction.toFixed(3);
+        
+        // Determine color class based on cutoff
         const cutoff = plotData.cutoff;
+        let colorClass;
+        
         if (prediction >= cutoff) {
-            diagnosisResultDiv.textContent = "Diagnosis: Myeloid Malignancy";
-            diagnosisResultDiv.className = 'diagnosis-output diagnosis-mm';
+            // Above cutoff - Myeloid Malignancy (red)
+            colorClass = 'prediction-score score-high';
+            diagnosisResultDiv.textContent = "Myeloid Malignancy";
         } else {
-            diagnosisResultDiv.textContent = "Diagnosis: Leukemoid Reaction";
-            diagnosisResultDiv.className = 'diagnosis-output diagnosis-lr';
+            // Below cutoff - Leukemoid Reaction (green)
+            colorClass = 'prediction-score score-low';
+            diagnosisResultDiv.textContent = "Leukemoid Reaction";
         }
-        diagnosisResultDiv.style.backgroundColor = '';
+        
+        // Apply the same color class to both elements
+        predictionScoreDiv.className = colorClass;
+        diagnosisResultDiv.className = colorClass;
 
-        // --- Call Plotting Function ---
-        console.log("Generating plot...");
+        // Switch to results tab
+        showTab('results-tab');
+
+        // Generate plot
         generatePlot(prediction, plotData.background_predictions, plotData.background_diagnoses, plotData.cutoff);
-        console.log("Plot generation initiated.");
-
 
     } catch (error) {
         console.error("Prediction failed:", error);
-        diagnosisResultDiv.textContent = `Prediction Error: ${error.message}`;
-        diagnosisResultDiv.className = 'diagnosis-output';
-        diagnosisResultDiv.style.backgroundColor = 'red';
+        predictionScoreDiv.textContent = "Error";
+        diagnosisResultDiv.textContent = error.message;
+        diagnosisResultDiv.className = 'prediction-score score-high';
     } finally {
         computeButton.disabled = false;
         computeButton.textContent = 'Compute Prediction';
     }
 }
 
-// --- Plotting Function ---
-function generatePlot(oosPrediction, backgroundPredictions, backgroundDiagnoses, cutoff) {
-    console.log("Plotting inputs:", {oosPrediction, numBgPreds: backgroundPredictions.length, numBgDiags: backgroundDiagnoses.length, cutoff});
+// Get list of abnormal values
+function getAbnormalValues() {
+    const abnormal = [];
+    Object.keys(referenceRanges).forEach(param => {
+        const input = document.getElementById(param);
+        if (!input) return;
+        
+        const value = parseFloat(input.value);
+        if (isNaN(value)) return;
+        
+        const range = referenceRanges[param];
+        
+        if (value < range.normal_min || value > range.normal_max) {
+            abnormal.push({
+                name: param,
+                value: value,
+                unit: range.unit,
+                normal_min: range.normal_min,
+                normal_max: range.normal_max
+            });
+        }
+    });
+    return abnormal;
+}
 
+// --- Plotting Function ---
+function generatePlot(oosPredicrion, backgroundPredictions, backgroundDiagnoses, cutoff) {
     // --- Data processing ---
     let plotPoints = backgroundPredictions.map((pred, index) => ({
         prediction: pred,
         diagnosis: backgroundDiagnoses[index],
         type: backgroundDiagnoses[index] === 1 ? 'Myeloid Malignancy' : 'Leukemoid Reaction'
     }));
-    plotPoints.push({ prediction: oosPrediction, diagnosis: null, type: 'Prediction' });
+    
+    plotPoints.push({ 
+        prediction: oosPredicrion, 
+        diagnosis: null, 
+        type: 'Prediction' 
+    });
+    
     plotPoints.sort((a, b) => a.prediction - b.prediction);
     plotPoints.forEach((point, index) => { point.x = index + 1; });
 
@@ -265,24 +443,30 @@ function generatePlot(oosPrediction, backgroundPredictions, backgroundDiagnoses,
     };
 
     plotPoints.forEach(point => {
-        if (point.type === 'Leukemoid Reaction') { traceLR.x.push(point.x); traceLR.y.push(point.prediction); }
-        else if (point.type === 'Myeloid Malignancy') { traceMM.x.push(point.x); traceMM.y.push(point.prediction); }
+        if (point.type === 'Leukemoid Reaction') { 
+            traceLR.x.push(point.x); 
+            traceLR.y.push(point.prediction); 
+        }
+        else if (point.type === 'Myeloid Malignancy') { 
+            traceMM.x.push(point.x); 
+            traceMM.y.push(point.prediction); 
+        }
         else if (point.type === 'Prediction') {
-             tracePred.x.push(point.x); tracePred.y.push(point.prediction);
-             annotation.x = point.x; annotation.y = point.prediction;
-             
-             // Position annotation above or below the point based on y-value
-             if (point.prediction > 0.5) {
-                 annotation.ay = 40;  // Below the point
-                 annotation.yanchor = 'top';
-             } else {
-                 annotation.ay = -40; // Above the point
-                 annotation.yanchor = 'bottom';
-             }
+            tracePred.x.push(point.x); 
+            tracePred.y.push(point.prediction);
+            annotation.x = point.x; 
+            annotation.y = point.prediction;
+            
+            // Position annotation above or below the point based on y-value
+            if (point.prediction > 0.5) {
+                annotation.ay = 40;  // Below the point
+                annotation.yanchor = 'top';
+            } else {
+                annotation.ay = -40; // Above the point
+                annotation.yanchor = 'bottom';
+            }
         }
     });
-    // --- End Data processing ---
-
 
     // --- Layout definition with Horizontal Top-Right Legend ---
     const plotLayout = {
@@ -334,12 +518,12 @@ function generatePlot(oosPrediction, backgroundPredictions, backgroundDiagnoses,
         legend: {
             orientation: "h",
             yanchor: "top",
-            y: 1.08,  // Moved down slightly from 1.12
+            y: 1.08,
             xanchor: "center",
             x: 0.5,
-            bgcolor: 'rgba(255,255,255,0)',  // Transparent background
-            bordercolor: 'rgba(0,0,0,0)',    // No border
-            borderwidth: 0,                  // No border width
+            bgcolor: 'rgba(255,255,255,0)',
+            bordercolor: 'rgba(0,0,0,0)',
+            borderwidth: 0,
             font: {
                 family: 'Roboto, sans-serif',
                 size: 14
@@ -350,7 +534,7 @@ function generatePlot(oosPrediction, backgroundPredictions, backgroundDiagnoses,
         paper_bgcolor: 'white',
         plot_bgcolor: 'white',
         shapes: [
-             { // Cutoff line
+            { // Cutoff line
                 type: 'line',
                 x0: 0,
                 y0: cutoff,
@@ -379,15 +563,127 @@ function generatePlot(oosPrediction, backgroundPredictions, backgroundDiagnoses,
             (annotation.x !== null && annotation.y !== null) ? annotation : {}
         ]
     };
-    // --- End plotLayout definition ---
 
     const plotTraces = [traceLR, traceMM, tracePred];
     Plotly.newPlot(predictionPlotDiv, plotTraces, plotLayout, {responsive: true});
+}
 
-} // --- End generatePlot function ---
+// --- Tab switching function ---
+function showTab(tabId) {
+    // Hide all tab contents
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabContents.forEach(content => {
+        content.classList.remove('active');
+    });
+    
+    // Remove active class from all tab buttons
+    const tabButtons = document.querySelectorAll('.tab-button');
+    tabButtons.forEach(button => {
+        button.classList.remove('active');
+    });
+    
+    // Show the selected tab content
+    document.getElementById(tabId).classList.add('active');
+    
+    // Add active class to the clicked button
+    const activeButton = document.querySelector(`.tab-button[onclick="showTab('${tabId}')"]`);
+    if (activeButton) {
+        activeButton.classList.add('active');
+    }
 
+    // If results tab is selected and there's a prediction, resize the plot
+    if (tabId === 'results-tab' && document.getElementById('predictionPlot').innerHTML) {
+        setTimeout(() => {
+            if (typeof Plotly !== 'undefined') {
+                Plotly.Plots.resize(document.getElementById('predictionPlot'));
+            }
+        }, 100);
+    }
+}
 
-// --- Debounce Utility Function ---
+// --- Update range markers ---
+function updateRangeMarkers() {
+    // Update all parameters with range markers
+    const parameters = [
+        'neuts', 'bands', 'lymphs', 'monos', 'eos', 'baso',
+        'ldh', 'initial_wbc_hosp', 'hgb', 'mcv', 'platelets'
+    ];
+    
+    parameters.forEach(param => {
+        const input = document.getElementById(param);
+        if (!input) return;
+        
+        const value = parseFloat(input.value);
+        if (isNaN(value)) return;
+        
+        const range = referenceRanges[param];
+        const total = range.max - range.min;
+        const percentPosition = ((value - range.min) / total) * 100;
+        
+        const marker = document.querySelector(`.${param}-marker`);
+        if (marker) {
+            marker.style.left = `${percentPosition}%`;
+        }
+        
+        // Mark abnormal values
+        if (value < range.normal_min || value > range.normal_max) {
+            input.classList.add('abnormal');
+        } else {
+            input.classList.remove('abnormal');
+        }
+    });
+}
+
+// Function to check and mark abnormal values
+function checkAbnormalValues() {
+    Object.keys(referenceRanges).forEach(param => {
+        const input = document.getElementById(param);
+        if (!input) return;
+        
+        const value = parseFloat(input.value);
+        if (isNaN(value)) return;
+        
+        const range = referenceRanges[param];
+        
+        if (value < range.normal_min || value > range.normal_max) {
+            input.classList.add('abnormal');
+        } else {
+            input.classList.remove('abnormal');
+        }
+    });
+}
+
+// Add this function to ensure all event listeners are properly set up
+function setupInputListeners() {
+    // Add input event listeners to all parameters with range markers
+    const parameters = [
+        'neuts', 'bands', 'lymphs', 'monos', 'eos', 'baso',
+        'ldh', 'initial_wbc_hosp', 'hgb', 'mcv', 'platelets'
+    ];
+    
+    parameters.forEach(param => {
+        const input = document.getElementById(param);
+        if (input) {
+            // Remove any existing listeners to prevent duplicates
+            const newInput = input.cloneNode(true);
+            input.parentNode.replaceChild(newInput, input);
+            
+            // Add the event listener to the new element
+            newInput.addEventListener('input', function() {
+                updateRangeMarkers();
+                checkAbnormalValues();
+            });
+            
+            // Also add change event for when users use arrow keys or blur
+            newInput.addEventListener('change', function() {
+                updateRangeMarkers();
+                checkAbnormalValues();
+            });
+        }
+    });
+}
+
+// Debounce function for resize
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -398,26 +694,38 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
-};
+}
 
-// --- Plot Resizing Logic ---
-const plotContainer = document.getElementById('predictionPlot');
-
+// Resize handler for plots
 const debouncedResizeHandler = debounce(() => {
-    if (plotContainer && typeof Plotly !== 'undefined') {
-         console.log("Window resized, calling Plotly.Plots.resize...");
-         try {
-             Plotly.Plots.resize(plotContainer);
-         } catch (error) {
-             console.error("Error during Plotly resize:", error);
-         }
+    if (predictionPlotDiv && typeof Plotly !== 'undefined') {
+        console.log("Window resized, calling Plotly.Plots.resize...");
+        try {
+            Plotly.Plots.resize(predictionPlotDiv);
+        } catch (error) {
+            console.error("Error during Plotly resize:", error);
+        }
     }
 }, 250);
 
 window.addEventListener('resize', debouncedResizeHandler);
 
-// --- Attach Event Listener for Compute Button ---
-computeButton.addEventListener('click', handleCompute);
-
-// --- Start Initialization ---
-initializeApp();
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listener to compute button
+    computeButton.addEventListener('click', handleCompute);
+    
+    // Set up input listeners properly
+    setupInputListeners();
+    
+    // Initialize range markers
+    updateRangeMarkers();
+    
+    // Adjust the results layout
+    adjustResultsLayout();
+    
+    // Add additional styles for result items
+    addResultItemStyles();
+    
+    // Start app initialization
+    initializeApp();
+});
